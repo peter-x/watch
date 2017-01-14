@@ -194,13 +194,20 @@
         xmlHttp.send();
     }
 
+    function clearSVG() {
+        var svg = document.querySelector("#appointments svg");
+        var parentElement = svg.parentElement;
+        parentElement.removeChild(svg);
+        parentElement.appendChild(svg.cloneNode(false));
+    }
+
     function updateWatch() {
         updateDate();
         updateTime();
     }
 
     function updateInformation() {
-        document.querySelector("#appointments svg").innerHTML = '';
+        clearSVG();
         updatePrice();
         updateCalendar();
         updateWeather();
