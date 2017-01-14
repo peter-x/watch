@@ -1,48 +1,10 @@
 (function() {
+    var circular = null;
+
     function rotateElement(element, rotateAngle) {
         element.style.transform = "rotate(" + rotateAngle + "deg)";
     }
     
-    function appendSVGPath(svgElement, attrs) {
-        var path = document.createElementNS('http://www.w3.org/2000/svg','path');
-        for (key in attrs) {
-            path.setAttributeNS(null, key, attrs[key]);
-        }
-        svgElement.appendChild(path);
-    }
-
-    /**
-     * Adds a path to svgElement representing a circular line segment from
-     * start to end (in radians).
-     */
-    function drawSegment(svgElement, start, end, options) {
-        options = options || {};
-        var scale = options.scale || 1;
-        var width = options.width || .03;
-        var toEucl = function(rad, scale) {
-            if (scale === undefined) scale = 1;
-            return (scale * Math.sin(rad)) + ' ' + (scale * -Math.cos(rad));
-        };
-        var lineSeg = 'M ' + toEucl(start, scale); 
-        for (var i = start; i < end; i += .05)
-            lineSeg += ' L ' + toEucl(i, scale);
-        lineSeg += ' L ' + toEucl(end, scale);
-        appendSVGPath(svgElement, {
-            d: lineSeg,
-            stroke: options.colour || 'white',
-            fill: 'none',
-            'stroke-width': width
-        });
-        if (options.startTick) {
-            appendSVGPath(svgElement, {
-                d: 'M ' + toEucl(start, scale * .95) + ' L ' + toEucl(start, scale * 1.1),
-                stroke: options.colour || 'white',
-                fill: 'none',
-                'stroke-width': '.02'
-            });
-        }
-    }
-
     function getDate() {
         return typeof tizen != 'undefined' ? tizen.time.getCurrentDateTime() : new Date();
     }
@@ -80,22 +42,23 @@
         xmlHttp.onreadystatechange = function() {
             if (xmlHttp.readyState != 4) return;
             if (xmlHttp.responseText) {
-                var svg = document.querySelector("#appointments svg");
                 var data = JSON.parse(xmlHttp.responseText);
+                var segments = [];
                 for (var i = 0; i < data.length; i++) {
                     var start = new Date(data[i][0]);
                     var duration = data[i][1];
                     // TODO fade out the colour if longer than 6 hours
                     // or if overlapping another event
                     if (duration <= 60 * 6) {
-                        drawSegment(
-                            svg,
-                            dateToRadians(start),
-                            dateToRadians(new Date(+start + duration * 60000)),
-                            {colour: '#d23737', startTick: true}
-                        );
+                        segments.push({
+                            start: dateToRadians(start),
+                            end: dateToRadians(new Date(+start + duration * 60000)),
+                            colour: '#d23737',
+                            startTick: true
+                        });
                     }
                 }
+                circular.updateDisplay('appointments', segments);
             }
         };
 
@@ -110,9 +73,9 @@
             if (xmlHttp.readyState != 4) return;
             if (xmlHttp.responseText) {
                 var now = new Date();
-                var svg = document.querySelector("#appointments svg");
                 var response = xmlHttp.responseText;
                 var data = JSON.parse(response).hourly.data;
+                var segments = [];
                 for (var i = 0; i < data.length; i++) {
                     var dataDate = new Date(data[i].time * 1000);
                     if (dataDate > +now + 11 * 3600000) {
@@ -120,14 +83,16 @@
                     }
                     var precip = data[i].precipProbability;
                     if (precip > .4) {
-                        drawSegment(
-                            svg,
-                            dateToRadians(new Date(+dataDate - 30 * 60000)),
-                            dateToRadians(new Date(+dataDate + 30 * 60000)),
-                            {scale: .8, colour: '#2334e2', width: precip * .05}
-                        );
+                        segments.push({
+                            start: dateToRadians(new Date(+dataDate - 30 * 60000)),
+                            end: dateToRadians(new Date(+dataDate + 30 * 60000)),
+                            scale: .8,
+                            colour: '#2334e2',
+                            width: precip * .05
+                        });
                     }
                 }
+                circular.updateDisplay('rain', segments);
             }
         };
 
@@ -194,20 +159,12 @@
         xmlHttp.send();
     }
 
-    function clearSVG() {
-        var svg = document.querySelector("#appointments svg");
-        var parentElement = svg.parentElement;
-        parentElement.removeChild(svg);
-        parentElement.appendChild(svg.cloneNode(false));
-    }
-
     function updateWatch() {
         updateDate();
         updateTime();
     }
 
     function updateInformation() {
-        clearSVG();
         updatePrice();
         updateCalendar();
         updateWeather();
@@ -231,12 +188,13 @@
 
     window.onload = function() {
         bindEvents();
+        circular = new Circular("#appointments svg");
         updateWatch();
         updateInformation();
         setInterval(function() {
             updateTime();
         }, 1000);
-        // Update everything every 30 seconds
+        // Update everything every 30 minutes
         setInterval(function() {
             updateWatch();
             updateInformation();
